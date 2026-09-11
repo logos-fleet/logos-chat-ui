@@ -163,8 +163,8 @@ void ChatBackend::initialiseModule()
 {
     setChatStatus(ChatBackendSimpleSource::Initialising);
 
-    // Both fields are optional in the contract, so the generated struct spells
-    // them QVariant; assigning a QString is "present".
+    // Both fields are optional in the contract, so the generated record spells
+    // them std::optional<QString>; assigning a QString is "present".
     ChatModule::ChatConfig config;
     config.delivery_preset = QString::fromLatin1(kDefaultDeliveryPreset);
     config.log_level = QString::fromLatin1(kChatLogLevel);

@@ -31,21 +31,15 @@
 
       nixpkgs = logos-module-builder.inputs.nixpkgs;
 
-      # x86_64-windows is a cross PSEUDO-SYSTEM, and only `packages` means
-      # anything under it.
-      #
-      # `apps` does not, and the whole key has to go rather than just the two
-      # added below: mkLogosQmlModule's own `apps.<system>.default` resolves the
-      # standalone runner against a NATIVE Windows nixpkgs, which nixpkgs
-      # refuses outright ("Package … is not available on the requested
-      # hostPlatform"). The two doc-test runners fail one layer earlier still --
-      # `import nixpkgs { inherit system; }` for this key dies in cc-wrapper
-      # ("called without required argument 'runtimeShell'").
-      #
-      # Neither a standalone runner nor a doc-test means anything on a cross
-      # target, so `apps` keeps the native systems only, and `packages` gains
-      # `exchange` only where it can be evaluated. `packages.x86_64-windows.*`
-      # itself is untouched and is what the Windows build consumes.
+      # x86_64-windows is a cross PSEUDO-SYSTEM: only `packages` means anything
+      # under it, and neither a standalone runner nor a doc-test does. Both also
+      # fail to evaluate there -- mkLogosQmlModule's own `apps.<system>.default`
+      # resolves the runner against a NATIVE Windows nixpkgs ("Package … is not
+      # available on the requested hostPlatform"), and the two doc-test runners
+      # die one layer earlier in `import nixpkgs { inherit system; }` ("called
+      # without required argument 'runtimeShell'"). So `apps` drops the key
+      # whole, and `packages` gains `exchange` only where it evaluates;
+      # `packages.x86_64-windows.*` is untouched and is what Windows consumes.
       windowsSystem = "x86_64-windows";
 
       # `nix run .#exchange`: drive the real two-party message round-trip and hold
