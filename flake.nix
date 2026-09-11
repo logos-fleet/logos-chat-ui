@@ -10,10 +10,12 @@
     # Follow chat_module's own builder, so the logos-protocol/logos-qt-sdk
     # chain matches across both.
     logos-module-builder.follows = "chat_module/logos-module-builder";
-    # Pinned to the v0.2.2 release tag: this view and the module it renders are
-    # released in lockstep, so the module built here is the release the package
-    # manager resolves.
-    chat_module.url = "github:logos-co/logos-chat-module/v0.2.2";
+    # Pinned to the chat_module commit that moved onto a logos-module-builder
+    # carrying the typed-record codegen this view now consumes. A rev rather
+    # than a tag, and the logos-fleet fork rather than logos-co, only because no
+    # release carries either yet -- re-pin to the tag once one is cut, and keep
+    # the lockstep the paragraph above describes.
+    chat_module.url = "github:logos-fleet/logos-chat-module/a55cbf180884f9d75aa279e79b85b9a285e17aa1";
     # Follow chat_module's delivery pin, so both build against the same
     # delivery module.
     logos-delivery-module.follows = "chat_module/logos-delivery-module";
@@ -28,6 +30,17 @@
       };
 
       nixpkgs = logos-module-builder.inputs.nixpkgs;
+
+      # x86_64-windows is a cross PSEUDO-SYSTEM: only `packages` means anything
+      # under it, and neither a standalone runner nor a doc-test does. Both also
+      # fail to evaluate there -- mkLogosQmlModule's own `apps.<system>.default`
+      # resolves the runner against a NATIVE Windows nixpkgs ("Package … is not
+      # available on the requested hostPlatform"), and the two doc-test runners
+      # die one layer earlier in `import nixpkgs { inherit system; }` ("called
+      # without required argument 'runtimeShell'"). So `apps` drops the key
+      # whole, and `packages` gains `exchange` only where it evaluates;
+      # `packages.x86_64-windows.*` is untouched and is what Windows consumes.
+      windowsSystem = "x86_64-windows";
 
       # `nix run .#exchange`: drive the real two-party message round-trip and hold
       # the receiving window open showing the result. The doc-test launches this
@@ -73,11 +86,12 @@
             exchange = { type = "app"; program = "${exchangeRunner system}/bin/chat-ui-exchange"; };
             group = groupApp system;
           })
-          base.apps;
+          (builtins.removeAttrs base.apps [ windowsSystem ]);
         # Also a package so `nix build .#exchange` resolves: the doc-test runner
         # pre-builds its launch target that way to warm the store before the run.
         packages = builtins.mapAttrs
-          (system: sysPkgs: sysPkgs // { exchange = exchangeRunner system; })
+          (system: sysPkgs: sysPkgs // nixpkgs.lib.optionalAttrs
+            (system != windowsSystem) { exchange = exchangeRunner system; })
           base.packages;
       };
 }
