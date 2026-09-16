@@ -177,7 +177,7 @@ view module.
 | File | Role |
 |------|------|
 | `ChatBackend.rep` | Defines the C++/QML boundary — `ChatStatus` enum, state props, lifecycle slots, signals |
-| `ChatBackend` | Derives `ChatBackendSimpleSource` + `LogosUiPluginContext`; initialises the module and subscribes to `chat_module` events in `onContextReady()`; drives the three models |
+| `ChatBackend` | Derives `ChatBackendSimpleSource` + `LogosUiPluginContext`; initialises the module and subscribes to `chat_module` events in `onContextReady()`; closes the module's session in `aboutToUnload()` (never in the destructor — by then the typed `modules()` aggregate is gone); drives the three models |
 | `ConversationListModel` | A row per conversation: its id, display name, kind, description, last activity and the label for it, message preview, unread count, avatar |
 | `MessageListModel` | A row per message: sender, content, timestamp and the label for it, whether it is yours, where a run of one sender and a new day begin, avatar |
 | `MemberListModel` | A row per member: address, label, whether it is you, whether the invite is still uncommitted, avatar |

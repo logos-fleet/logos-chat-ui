@@ -37,6 +37,26 @@ public:
     // chat_module surface is live, so init + event subscriptions happen here.
     void onContextReady() override;
 
+    // THE ONE PLACE THIS VIEW MAY STILL SPEAK TO ITS MODULE.
+    //
+    // The session chat_module opened for this view is closed here and nowhere
+    // else. It is NOT the destructor's job, and never was: the generated plugin
+    // owns both this backend and the typed `LogosModules` aggregate behind
+    // modules(), and destroys the aggregate FIRST -- so a call made from
+    // ~ChatBackend is made through a wrapper that no longer exists. The hook
+    // runs while the whole mount is up, which is what makes the call arrive
+    // (logos-workspace#212, and the "consumer wrapper has no transport (null
+    // bridge)" line #205's guard silenced for a FAILED init but could not fix
+    // for a successful one).
+    //
+    // Closing the app is deliberately not an unload, so the module stays loaded
+    // holding whatever this view left in it -- which is why the close must
+    // close it rather than trusting the teardown to.
+    //
+    // Synchronous: the call is a blocking round trip, so by the time it returns
+    // there is nothing left to wait for.
+    LogosShutdown aboutToUnload() override;
+
 public slots:
     void createConversation(QString peerAddress) override;
     void createGroupConversation(QString name, QString description) override;
