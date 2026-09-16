@@ -426,6 +426,13 @@ Item {
             return obj;
         }
 
+        // One retained failure, shaped exactly as ChatBackend publishes them
+        // (ErrorLog::published): `when`, `message`, `count`. The StatusBar reads
+        // that list whole, so its tests hand it the same maps.
+        function failure(when, message) {
+            return { when: when, message: message, count: 1 };
+        }
+
         // Find a named field anywhere under an item, descending the visual
         // children, a Control/ScrollView contentItem, and the non-visual data, so
         // a field inside a LogosScrollView or an entry inside a menu popup is
@@ -497,9 +504,7 @@ Item {
         // itself what is unseen.
         function test_statusBarShowsAFailureRaisedBeforeIt() {
             const bar = instantiate(statusBarC);
-            bar.failures = [
-                { when: "09:56:41", message: "Failed to initialise chat: module not loaded", count: 1 }
-            ];
+            bar.failures = [failure("09:56:41", "Failed to initialise chat: module not loaded")];
             compare(bar.errorCount, 1);
             compare(bar.errorMessage, "Failed to initialise chat: module not loaded");
             compare(bar.alerting, true);
@@ -512,16 +517,13 @@ Item {
         // still behind the button, and a LATER failure alerts again.
         function test_statusBarQuietsOnceSeenAndAlertsAgain() {
             const bar = instantiate(statusBarC);
-            bar.failures = [{ when: "09:56:41", message: "first", count: 1 }];
+            bar.failures = [failure("09:56:41", "first")];
             compare(bar.errorCount, 1);
             bar.markSeen();
             compare(bar.errorCount, 0);
             compare(bar.errorMessage, "");
             compare(bar.alerting, false);
-            bar.failures = [
-                { when: "09:57:02", message: "second", count: 1 },
-                { when: "09:56:41", message: "first", count: 1 }
-            ];
+            bar.failures = [failure("09:57:02", "second"), failure("09:56:41", "first")];
             compare(bar.errorCount, 1);
             compare(bar.errorMessage, "second");
         }
@@ -533,9 +535,9 @@ Item {
             const bar = instantiate(statusBarC);
             compare(bar.errorCount, 0);
             compare(bar.alerting, false);
-            bar.failures = [{ when: "1", message: "a", count: 1 }, { when: "2", message: "b", count: 1 }];
+            bar.failures = [failure("2", "b"), failure("1", "a")];
             bar.markSeen();
-            bar.failures = [{ when: "1", message: "a", count: 1 }];
+            bar.failures = [failure("1", "a")];
             compare(bar.errorCount, 0);
         }
 
@@ -1233,12 +1235,12 @@ Item {
             verify(message && count, "the message and the count must be reachable");
             verify(!count.visible, "nothing waiting shows no count");
 
-            bar.failures = [{ when: "12:00:00", message: "Failed to add member: no key package for peer", count: 1 }];
+            bar.failures = [failure("12:00:00", "Failed to add member: no key package for peer")];
             compare(message.text, "Failed to add member: no key package for peer");
             verify(!count.visible, "one failure is the one on show");
 
-            bar.failures = [{ when: "12:00:01", message: "Chat not online", count: 1 },
-                            { when: "12:00:00", message: "Failed to add member: no key package for peer", count: 1 }];
+            bar.failures = [failure("12:00:01", "Chat not online"),
+                            failure("12:00:00", "Failed to add member: no key package for peer")];
             verify(count.visible, "a second failure earns a count");
             compare(count.text, "2 errors");
         }
@@ -1255,7 +1257,7 @@ Item {
             mouseClick(message);
             compare(errorActivatedSpy.count, 0, "a resting strip is not a control");
 
-            bar.failures = [{ when: "12:00:00", message: "Chat not online", count: 1 }];
+            bar.failures = [failure("12:00:00", "Chat not online")];
             mouseClick(message);
             compare(errorActivatedSpy.count, 1, "a held failure activates once");
         }
@@ -1284,9 +1286,7 @@ Item {
             verify(badge, "the badge must be reachable");
             verify(!badge.visible, "nothing unseen, no badge");
 
-            bar.failures = [{ when: "3", message: "c", count: 1 },
-                            { when: "2", message: "b", count: 1 },
-                            { when: "1", message: "a", count: 1 }];
+            bar.failures = [failure("3", "c"), failure("2", "b"), failure("1", "a")];
             verify(badge.visible, "an unseen failure earns a badge");
 
             // What clearing looks like: the strip goes quiet and the list it

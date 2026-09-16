@@ -203,8 +203,8 @@ void ChatBackend::initialiseModule()
         // full when it has not, with how hard it tried.
         if (++m_initAttempts < kInitAttempts) {
             qWarning().noquote()
-                << "chat_ui: chat_module refused init on attempt" << m_initAttempts
-                << "(" << reason << "); retrying";
+                << QStringLiteral("chat_ui: chat_module refused init on attempt %1 (%2); "
+                                  "retrying").arg(m_initAttempts).arg(reason);
             QTimer::singleShot(kInitRetryDelayMs, this, [this] { initialiseModule(); });
             return;
         }
