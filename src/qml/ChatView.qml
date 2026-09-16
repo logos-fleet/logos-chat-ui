@@ -37,22 +37,17 @@ Rectangle {
     // thread header and left as the user last set it.
     property bool detailsShown: false
 
-    // The newest failure the status bar is holding, and how many nobody has
-    // looked at yet. Both stand until the logs are opened, which is what marks
-    // them seen; the failures themselves are retained by the backend either way.
-    property string lastError: ""
-    property int unseenErrorCount: 0
-
     ChatStore {
         id: store
     }
 
     Connections {
         target: store
-        function onErrorOccurred(message) {
-            root.lastError = message;
-            root.unseenErrorCount += 1;
-        }
+        // No onErrorOccurred here (logos-workspace#205). The strip reads the
+        // backend's RETAINED list instead, because the failure that matters
+        // most -- the module the view calls not being loaded -- is reported
+        // from the backend's construction, before this view exists and before
+        // anything could be connected to a one-shot signal.
         function onSendFailed(conversationId, content) {
             threadPane.restoreFailedSend(conversationId, content);
         }
@@ -169,9 +164,9 @@ Rectangle {
         }
 
         StatusBar {
+            id: statusBar
             Layout.fillWidth: true
-            errorMessage: root.lastError
-            errorCount: root.unseenErrorCount
+            failures: store.errors
             onErrorActivated: root.showLogs()
             onLogsRequested: root.showLogs()
         }
@@ -183,8 +178,7 @@ Rectangle {
         // The files rotate and get pruned while the app runs, so the list is
         // read at the moment it is shown.
         store.refreshLogRuns();
-        root.lastError = "";
-        root.unseenErrorCount = 0;
+        statusBar.markSeen();
         sessionLogsDialog.open();
     }
 

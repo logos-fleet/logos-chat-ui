@@ -13,19 +13,46 @@ import Logos.Controls
 // failures are retained behind the button. That button is the way to the run's
 // log files and to the whole list, and is the one thing on the bar that is there
 // whether or not anything failed.
+//
+// IT READS THE RETAINED LIST, not a signal (logos-workspace#205). The strip used
+// to be told what to say by the view, out of the backend's one-shot `error`
+// signal -- and chat_ui's worst failure fires before the view exists: the
+// backend initialises the chat module from its own construction, so "Failed to
+// initialise chat" was emitted with nothing connected, went to a log, and the
+// app drew an ordinary conversation list over a backend that was never there.
+// The retained list is the one thing that survives that, so the bar takes it
+// whole and decides for itself what nobody has looked at.
 // Set the properties; standalone.
 Rectangle {
     id: root
 
-    // The newest failure, in prose. Empty leaves the strip resting.
-    required property string errorMessage
-    // How many failures nobody has looked at yet, the displayed one included.
-    required property int errorCount
+    // Every failure this run kept, newest first: one map per entry, with
+    // `when`, `message` and `count`, exactly as the backend publishes them.
+    required property var failures
+    // How many of them somebody has already looked at. HERE rather than in the
+    // view, because "what is still unread" is the only state the strip has and
+    // splitting it from the list it counts is what let the two disagree.
+    property int seenCount: 0
 
     signal errorActivated
     signal logsRequested
 
+    readonly property int retainedCount: root.failures ? root.failures.length : 0
+    // Never negative: the backend caps its log at 200 entries and drops the
+    // oldest, so the list a strip is holding can get SHORTER without anything
+    // having been read.
+    readonly property int errorCount: Math.max(0, root.retainedCount - root.seenCount)
+    // The newest, which is the one at the front.
+    readonly property string errorMessage:
+        root.errorCount > 0 ? (root.failures[0].message || "") : ""
+
     readonly property bool alerting: root.errorCount > 0
+
+    // Everything retained has been read. Quiets the strip and discards nothing
+    // -- the list is behind the button.
+    function markSeen() {
+        root.seenCount = root.retainedCount;
+    }
 
     implicitWidth: 480
     implicitHeight: 26
