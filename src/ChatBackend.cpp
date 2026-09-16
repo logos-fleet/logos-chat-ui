@@ -156,14 +156,27 @@ void ChatBackend::onContextReady()
 
 ChatBackend::~ChatBackend()
 {
+    // SILENT, AND IT HAS TO BE. The session is closed in aboutToUnload() above;
+    // by the time this runs the generated plugin has already destroyed the
+    // `LogosModules` aggregate that modules() returns, so any call from here
+    // goes out through freed memory and is answered -- when it is answered at
+    // all -- with "consumer wrapper has no transport (null bridge)"
+    // (logos-workspace#212).
+}
+
+LogosShutdown ChatBackend::aboutToUnload()
+{
     // INITIALISED, not merely reachable (logos-workspace#205). A run whose
     // init() failed has no session in the module to close, and asking for one
-    // anyway raised a SECOND, different failure on the way out -- "consumer
-    // wrapper has no transport (null bridge)" -- which reads as a teardown
-    // defect and is only ever the first failure, said again in the language of
-    // the layer that gave up on it.
+    // anyway raised a SECOND, different failure on the way out, which reads as
+    // a teardown defect and is only ever the first failure said again in the
+    // language of the layer that gave up on it.
     if (m_moduleInitialised && isContextReady())
         modules().chat_module.shutdown();
+    // Nothing is left in flight: the call above is synchronous, and the health
+    // probe's timer dies with this object a moment from now.
+    m_moduleInitialised = false;
+    return LogosShutdown::Synchronous;
 }
 
 QAbstractItemModel* ChatBackend::conversationModel() const
@@ -317,21 +330,39 @@ void ChatBackend::reportFailure(const QString& action, const QString& reason)
 
 void ChatBackend::subscribeToEvents()
 {
+    // GUARDED, NOT CAPTURED RAW, for the same reason the health probe above is
+    // -- and more sharply. A subscription taken through the typed wrapper is
+    // parked for the life of the PROCESS (logos_qt_lp_bridge.h: "subscribe
+    // once, delivered forever"), and there is no way to hand it back. This
+    // backend is per-MOUNT: close the app and it is destroyed while its
+    // subscriptions stay armed, so the next chat event calls a method on freed
+    // memory. Measured on the iPad Air 13-inch (M2) simulator as a SIGSEGV at
+    // KERN_INVALID_ADDRESS 0x61 in ChatBackend::applyDeliveryState, reached
+    // from lp's event trampoline while the RE-OPENED mount was still waiting
+    // for its replica (logos-workspace#212).
+    //
+    // A QPointer makes a dead subscription a no-op rather than a crash. It does
+    // not un-arm it: a second mount adds a second callback and the first stays
+    // for the run. That is a small, bounded leak of dormant callbacks, and the
+    // alternative is a way to drop an lp subscription, which the Qt consumer
+    // surface does not have.
+    QPointer<ChatBackend> self(this);
     auto& chat = modules().chat_module;
     chat.on(QStringLiteral("message_received"),
-            [this](const QVariantList& a) { applyMessageReceived(a); });
+            [self](const QVariantList& a) { if (self) self->applyMessageReceived(a); });
     chat.on(QStringLiteral("message_sent"),
-            [this](const QVariantList& a) { applyMessageSent(a); });
+            [self](const QVariantList& a) { if (self) self->applyMessageSent(a); });
     chat.on(QStringLiteral("conversation_created"),
-            [this](const QVariantList& a) { applyConversationCreated(a); });
+            [self](const QVariantList& a) { if (self) self->applyConversationCreated(a); });
     chat.on(QStringLiteral("conversation_updated"),
-            [this](const QVariantList& a) { applyConversationUpdated(a); });
+            [self](const QVariantList& a) { if (self) self->applyConversationUpdated(a); });
     chat.on(QStringLiteral("members_changed"),
-            [this](const QVariantList& a) { applyMembersChanged(a); });
+            [self](const QVariantList& a) { if (self) self->applyMembersChanged(a); });
     chat.on(QStringLiteral("conversation_deleted"),
-            [this](const QVariantList& a) { applyConversationDeleted(a); });
-    chat.on(QStringLiteral("delivery_state_changed"), [this](const QVariantList& a) {
-        applyDeliveryState(a.value(0).toString(), a.value(1).toString());
+            [self](const QVariantList& a) { if (self) self->applyConversationDeleted(a); });
+    chat.on(QStringLiteral("delivery_state_changed"), [self](const QVariantList& a) {
+        if (self)
+            self->applyDeliveryState(a.value(0).toString(), a.value(1).toString());
     });
 }
 
