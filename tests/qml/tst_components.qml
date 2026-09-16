@@ -7,8 +7,12 @@ import ChatUi
 
 // Standalone-instantiability + behaviour tests for the ChatUi components. Run
 // headless with qmltestrunner, giving it src/qml on the import path (so `import
-// ChatUi` resolves) and the design system's lib dir (so Logos.* resolves):
-//   qmltestrunner -input tests/qml -import src/qml -import <app>/lib -platform offscreen
+// ChatUi` resolves) and the design system's QML SOURCE tree (so Logos.* resolves
+// -- a built logos-design-system is a static QML module with no on-disk qmldir,
+// so its store path cannot be imported):
+//   qmltestrunner -input tests/qml -import src/qml \
+//     -import <logos-design-system>/src/qml -import <qtdeclarative>/lib/qt-6/qml \
+//     -platform offscreen
 // Every component must instantiate with mock data and no host `logos` context —
 // that is the house-rule-2 proof; a broken import or a misused Logos API surfaces
 // here as a null object.
@@ -212,8 +216,7 @@ Item {
         id: statusBarC
         StatusBar {
             width: 360
-            errorMessage: ""
-            errorCount: 0
+            failures: []
         }
     }
     Component {
@@ -480,6 +483,60 @@ Item {
             instantiate(emptyStateC);
             instantiate(statusBarC);
             instantiate(clipboardProxyC);
+        }
+
+        // THE FAILURES THE RUN RETAINED, not the ones the view happened to hear
+        // about (logos-workspace#205).
+        //
+        // The strip used to be driven by the backend's one-shot `error` signal,
+        // and chat_ui's worst failure fires before the view exists: init runs
+        // from the backend's construction, so "Failed to initialise chat"
+        // reached a log and nothing on screen -- the app drew its conversation
+        // list over a dead backend and said nothing. The retained list is the
+        // one thing that survives that, so the bar reads it and decides for
+        // itself what is unseen.
+        function test_statusBarShowsAFailureRaisedBeforeIt() {
+            const bar = instantiate(statusBarC);
+            bar.failures = [
+                { when: "09:56:41", message: "Failed to initialise chat: module not loaded", count: 1 }
+            ];
+            compare(bar.errorCount, 1);
+            compare(bar.errorMessage, "Failed to initialise chat: module not loaded");
+            compare(bar.alerting, true);
+            const message = findField(bar, "statusMessage");
+            verify(message);
+            compare(message.text, "Failed to initialise chat: module not loaded");
+        }
+
+        // Marking them seen quiets the strip and discards nothing: the list is
+        // still behind the button, and a LATER failure alerts again.
+        function test_statusBarQuietsOnceSeenAndAlertsAgain() {
+            const bar = instantiate(statusBarC);
+            bar.failures = [{ when: "09:56:41", message: "first", count: 1 }];
+            compare(bar.errorCount, 1);
+            bar.markSeen();
+            compare(bar.errorCount, 0);
+            compare(bar.errorMessage, "");
+            compare(bar.alerting, false);
+            bar.failures = [
+                { when: "09:57:02", message: "second", count: 1 },
+                { when: "09:56:41", message: "first", count: 1 }
+            ];
+            compare(bar.errorCount, 1);
+            compare(bar.errorMessage, "second");
+        }
+
+        // An empty run rests, and a bar whose list is replaced by a SHORTER one
+        // does not go negative -- the backend caps the log at 200 entries and
+        // drops the oldest.
+        function test_statusBarRestsWithNothingToSay() {
+            const bar = instantiate(statusBarC);
+            compare(bar.errorCount, 0);
+            compare(bar.alerting, false);
+            bar.failures = [{ when: "1", message: "a", count: 1 }, { when: "2", message: "b", count: 1 }];
+            bar.markSeen();
+            bar.failures = [{ when: "1", message: "a", count: 1 }];
+            compare(bar.errorCount, 0);
         }
 
         // copy() writes without throwing; an empty string is a no-op.
@@ -1176,12 +1233,12 @@ Item {
             verify(message && count, "the message and the count must be reachable");
             verify(!count.visible, "nothing waiting shows no count");
 
-            bar.errorMessage = "Failed to add member: no key package for peer";
-            bar.errorCount = 1;
+            bar.failures = [{ when: "12:00:00", message: "Failed to add member: no key package for peer", count: 1 }];
             compare(message.text, "Failed to add member: no key package for peer");
             verify(!count.visible, "one failure is the one on show");
 
-            bar.errorCount = 2;
+            bar.failures = [{ when: "12:00:01", message: "Chat not online", count: 1 },
+                            { when: "12:00:00", message: "Failed to add member: no key package for peer", count: 1 }];
             verify(count.visible, "a second failure earns a count");
             compare(count.text, "2 errors");
         }
@@ -1198,8 +1255,7 @@ Item {
             mouseClick(message);
             compare(errorActivatedSpy.count, 0, "a resting strip is not a control");
 
-            bar.errorMessage = "Chat not online";
-            bar.errorCount = 1;
+            bar.failures = [{ when: "12:00:00", message: "Chat not online", count: 1 }];
             mouseClick(message);
             compare(errorActivatedSpy.count, 1, "a held failure activates once");
         }
@@ -1228,13 +1284,16 @@ Item {
             verify(badge, "the badge must be reachable");
             verify(!badge.visible, "nothing unseen, no badge");
 
-            bar.errorCount = 3;
+            bar.failures = [{ when: "3", message: "c", count: 1 },
+                            { when: "2", message: "b", count: 1 },
+                            { when: "1", message: "a", count: 1 }];
             verify(badge.visible, "an unseen failure earns a badge");
 
-            // What clearing looks like from the view: the count goes to zero and
-            // the list it counted lives on behind the button.
-            bar.errorCount = 0;
+            // What clearing looks like: the strip goes quiet and the list it
+            // counted lives on behind the button.
+            bar.markSeen();
             verify(!badge.visible, "opening the logs quiets the strip");
+            compare(bar.failures.length, 3, "and discards nothing");
         }
 
         // A tab lists its own writer's runs and no one else's, which is what

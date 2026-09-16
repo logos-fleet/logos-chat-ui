@@ -37,6 +37,24 @@ constexpr int kHealthTimeoutMs = 2000;
 // hiccup; the announcement is not worth being wrong about.
 constexpr int kHealthMissesBeforeGone = 2;
 
+// HOW HARD A FIRST init() TRIES (logos-workspace#205).
+//
+// This view calls chat_module from its own construction, and the module is
+// brought up by whoever mounted the view. The two are now ordered -- the
+// Basecamp Shell loads what a native view declares before it instantiates the
+// framework -- but the host is not this repo's to guarantee, and a view that
+// loses the race gives up for the whole session: the app then draws a perfectly
+// ordinary conversation list over a backend that was never there. The Web
+// container's client has retried this refusal for exactly as long
+// (`callModuleAsync refused on attempt 1; retrying`), and this is the native
+// half of the same thing.
+//
+// Bounded, and short: the answer either arrives within a couple of loop turns
+// or the module is genuinely not there, and a view that spun would be a spin
+// against a module nobody is going to load.
+constexpr int kInitAttempts = 4;
+constexpr int kInitRetryDelayMs = 250;
+
 QDateTime msToDateTime(qint64 ms)
 {
     return ms > 0 ? QDateTime::fromMSecsSinceEpoch(ms) : QDateTime::currentDateTime();
@@ -138,7 +156,13 @@ void ChatBackend::onContextReady()
 
 ChatBackend::~ChatBackend()
 {
-    if (isContextReady())
+    // INITIALISED, not merely reachable (logos-workspace#205). A run whose
+    // init() failed has no session in the module to close, and asking for one
+    // anyway raised a SECOND, different failure on the way out -- "consumer
+    // wrapper has no transport (null bridge)" -- which reads as a teardown
+    // defect and is only ever the first failure, said again in the language of
+    // the layer that gave up on it.
+    if (m_moduleInitialised && isContextReady())
         modules().chat_module.shutdown();
 }
 
@@ -171,8 +195,23 @@ void ChatBackend::initialiseModule()
     const LogosResult res = modules().chat_module.init(config);
     if (!res.success) {
         const QString reason = res.getError<QString>();
+        // ONE MORE TURN OF THE LOOP, up to kInitAttempts (#205). The failure
+        // this recovers from is the module not being loaded YET, and the only
+        // thing that distinguishes it from a module that will never be loaded
+        // is time. Reported only when the last attempt has also failed, so a
+        // race the view wins costs the user nothing to read -- and reported in
+        // full when it has not, with how hard it tried.
+        if (++m_initAttempts < kInitAttempts) {
+            qWarning().noquote()
+                << "chat_ui: chat_module refused init on attempt" << m_initAttempts
+                << "(" << reason << "); retrying";
+            QTimer::singleShot(kInitRetryDelayMs, this, [this] { initialiseModule(); });
+            return;
+        }
         setChatStatus(ChatBackendSimpleSource::Error);
-        reportFailure(QStringLiteral("Failed to initialise chat"), reason);
+        reportFailure(QStringLiteral("Failed to initialise chat after %1 attempts")
+                          .arg(m_initAttempts),
+                      reason);
         return;
     }
 

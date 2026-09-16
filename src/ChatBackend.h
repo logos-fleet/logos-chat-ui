@@ -119,6 +119,10 @@ private:
     MemberListModel* m_memberModel;
 
     bool m_moduleInitialised = false;
+    // How many times init() has been tried this run. The module is brought up
+    // by whoever mounted this view, so the first call can arrive before it is
+    // loaded -- see kInitAttempts in the .cpp (logos-workspace#205).
+    int m_initAttempts = 0;
     // Set once the initial snapshot has loaded; gates the reconnect resync in
     // applyDeliveryState so it doesn't fire during initial setup.
     bool m_initialSnapshotDone = false;
