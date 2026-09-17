@@ -38,6 +38,7 @@
       };
 
       nixpkgs = logos-module-builder.inputs.nixpkgs;
+      pkgsFor = system: import nixpkgs { inherit system; };
 
       # x86_64-windows is a cross PSEUDO-SYSTEM: only `packages` means anything
       # under it, and neither a standalone runner nor a doc-test does. Both also
@@ -73,7 +74,7 @@
       #                      SOURCE (see the input comment above)
       qmlCheck = system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = pkgsFor system;
           qtDeclarative = pkgs.qt6.qtdeclarative;
         in pkgs.runCommand "logos-chat-ui-qml-tests" { } ''
           cp -R ${./.} repo
@@ -90,7 +91,13 @@
 
           # Redirected, never piped: a pipe would hand nix the exit status of
           # `tee` and a failing suite would pass.
-          if ! ${qtDeclarative}/bin/qmltestrunner                  -input tests/qml                  -import src/qml                  -import tests/qml-stubs                  -import ${logos-design-system}/src/qml                  -import ${qtDeclarative}/lib/qt-6/qml                  -platform offscreen > qml-tests.log 2>&1; then
+          if ! ${qtDeclarative}/bin/qmltestrunner \
+                 -input tests/qml \
+                 -import src/qml \
+                 -import tests/qml-stubs \
+                 -import ${logos-design-system}/src/qml \
+                 -import ${qtDeclarative}/lib/qt-6/qml \
+                 -platform offscreen > qml-tests.log 2>&1; then
             cat qml-tests.log
             echo "chat_ui: the QML suite failed -- see the FAIL! lines above" >&2
             exit 1
@@ -106,7 +113,7 @@
       # flake's standalone runner; the driver scripts are bundled from
       # ./doctests/exchange.
       exchangeRunner = system:
-        let pkgs = import nixpkgs { inherit system; };
+        let pkgs = pkgsFor system;
         in pkgs.writeShellApplication {
           name = "chat-ui-exchange";
           runtimeInputs = with pkgs; [ nodejs coreutils util-linux procps bash ];
@@ -123,7 +130,7 @@
       # runner; the driver scripts are bundled from ./doctests/group.
       groupApp = system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          pkgs = pkgsFor system;
           runner = pkgs.writeShellApplication {
             name = "chat-ui-group";
             runtimeInputs = with pkgs; [ nodejs coreutils util-linux procps bash ];
@@ -153,12 +160,9 @@
         # Over `configFor`'s keys, which are the NATIVE systems -- `packages`
         # also carries the mobile pseudo-systems, and there is no qmltestrunner
         # for aarch64-ios.
-        checks = builtins.listToAttrs (map
-          (system: {
-            name = system;
-            value = (base.checks.${system} or { }) // { qml = qmlCheck system; };
-          })
+        checks = nixpkgs.lib.genAttrs
           (builtins.filter (system: system != windowsSystem)
-            (builtins.attrNames base.configFor)));
+            (builtins.attrNames base.configFor))
+          (system: (base.checks.${system} or { }) // { qml = qmlCheck system; });
       };
 }

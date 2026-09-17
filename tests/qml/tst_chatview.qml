@@ -40,7 +40,8 @@ TestCase {
     // on construction, fails here instead.
     function test_view_instantiates() {
         const component = Qt.createComponent(chatViewUrl);
-        compare(component.status, Component.Ready, component.errorString());
+        compare(component.status, Component.Ready,
+                "ChatView.qml did not compile: " + component.errorString());
         const view = component.createObject(root);
         verify(view !== null, "ChatView.qml did not instantiate: " + component.errorString());
         verify(view.width > 0 && view.height > 0,
