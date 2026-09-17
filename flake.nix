@@ -66,7 +66,7 @@
       # view. It runs from a WRITABLE COPY of the repo because the tests
       # resolve the view relative to themselves.
       #
-      # Three import paths and a reason for each:
+      # Three import paths besides Qt's own, and a reason for each:
       #   src/qml            `import ChatUi` -- the module's own components
       #   tests/qml-stubs    `import Logos.ChatBackend`, which is host-registered
       #                      C++ at runtime and has no QML to resolve to here
@@ -157,9 +157,12 @@
           (system: sysPkgs: sysPkgs // nixpkgs.lib.optionalAttrs
             (system != windowsSystem) { exchange = exchangeRunner system; })
           base.packages;
-        # Over `configFor`'s keys, which are the NATIVE systems -- `packages`
-        # also carries the mobile pseudo-systems, and there is no qmltestrunner
-        # for aarch64-ios.
+        # Over `configFor`'s keys MINUS the Windows pseudo-system, which is
+        # the four native systems -- the only ones a qmltestrunner runs on.
+        # Neither of the other two sets would do: `configFor` itself carries
+        # x86_64-windows, where `pkgsFor` does not even evaluate (see the
+        # `windowsSystem` comment above), and `packages` carries the mobile
+        # pseudo-systems on top of that.
         checks = nixpkgs.lib.genAttrs
           (builtins.filter (system: system != windowsSystem)
             (builtins.attrNames base.configFor))
