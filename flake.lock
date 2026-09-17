@@ -68389,6 +68389,10 @@
           "chat_module",
           "logos-delivery-module"
         ],
+        "logos-design-system": [
+          "logos-module-builder",
+          "logos-design-system"
+        ],
         "logos-module-builder": [
           "chat_module",
           "logos-module-builder"
